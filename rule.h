@@ -30,7 +30,9 @@ int c_cpp_rules(char *target, bool allow_write_file)
                                 SCMP_SYS(pread64), SCMP_SYS(faccessat),
                                 SCMP_SYS(newfstatat), SCMP_SYS(set_tid_address),
                                 SCMP_SYS(set_robust_list), SCMP_SYS(rseq),
-                                SCMP_SYS(prlimit64)};
+                                SCMP_SYS(prlimit64),
+                                SCMP_SYS(futex),
+                                SCMP_SYS(getrandom)};
 
     // add rules
     int syscalls_whitelist_length = sizeof(syscalls_whitelist) / sizeof(int);
