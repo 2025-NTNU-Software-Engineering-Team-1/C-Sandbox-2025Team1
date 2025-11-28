@@ -30,7 +30,7 @@ int c_cpp_rules(char *target, bool allow_write_file)
                                 SCMP_SYS(pread64), SCMP_SYS(faccessat),
                                 SCMP_SYS(newfstatat), SCMP_SYS(set_tid_address),
                                 SCMP_SYS(set_robust_list), SCMP_SYS(rseq),
-                                SCMP_SYS(prlimit64),
+                                SCMP_SYS(prlimit64), SCMP_SYS(ioctl),
                                 SCMP_SYS(futex),
                                 SCMP_SYS(getrandom)};
 
@@ -64,6 +64,10 @@ int c_cpp_rules(char *target, bool allow_write_file)
         {
             return LOAD_SECCOMP_FAILED;
         }
+        if (seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(openat), 0) != 0)
+        {
+            return LOAD_SECCOMP_FAILED;
+        }
         if (seccomp_rule_add(ctx, SCMP_ACT_ALLOW, SCMP_SYS(dup), 0) != 0)
         {
             return LOAD_SECCOMP_FAILED;
@@ -92,7 +96,7 @@ int python3_rules(char *target)
     return 0;
 }
 
-int general_rules(char *target)
+int general_rules(char *target, bool allow_write_file)
 {
     scmp_filter_ctx ctx;
     ctx = seccomp_init(SCMP_ACT_ALLOW);
@@ -120,23 +124,26 @@ int general_rules(char *target)
         }
     }
 
-    // do not allow "w" and "rw" using open
-    if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(open), 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_WRONLY, O_WRONLY)) != 0)
+    if (!allow_write_file)
     {
-        return LOAD_SECCOMP_FAILED;
-    }
-    if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(open), 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_RDWR, O_RDWR)) != 0)
-    {
-        return LOAD_SECCOMP_FAILED;
-    }
-    // do not allow "w" and "rw" using openat
-    if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(openat), 1, SCMP_CMP(2, SCMP_CMP_MASKED_EQ, O_WRONLY, O_WRONLY)) != 0)
-    {
-        return LOAD_SECCOMP_FAILED;
-    }
-    if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(openat), 1, SCMP_CMP(2, SCMP_CMP_MASKED_EQ, O_RDWR, O_RDWR)) != 0)
-    {
-        return LOAD_SECCOMP_FAILED;
+        // do not allow "w" and "rw" using open
+        if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(open), 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_WRONLY, O_WRONLY)) != 0)
+        {
+            return LOAD_SECCOMP_FAILED;
+        }
+        if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(open), 1, SCMP_CMP(1, SCMP_CMP_MASKED_EQ, O_RDWR, O_RDWR)) != 0)
+        {
+            return LOAD_SECCOMP_FAILED;
+        }
+        // do not allow "w" and "rw" using openat
+        if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(openat), 1, SCMP_CMP(2, SCMP_CMP_MASKED_EQ, O_WRONLY, O_WRONLY)) != 0)
+        {
+            return LOAD_SECCOMP_FAILED;
+        }
+        if (seccomp_rule_add(ctx, SCMP_ACT_KILL, SCMP_SYS(openat), 1, SCMP_CMP(2, SCMP_CMP_MASKED_EQ, O_RDWR, O_RDWR)) != 0)
+        {
+            return LOAD_SECCOMP_FAILED;
+        }
     }
 
     if (seccomp_load(ctx) != 0)

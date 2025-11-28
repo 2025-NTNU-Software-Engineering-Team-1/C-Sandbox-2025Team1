@@ -11,16 +11,66 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #include "lang.h"
 #include "rule.h"
 
-const pid_t SANDBOX_UID = 1450;
-const pid_t SANDBOX_GID = 1450;
+pid_t SANDBOX_UID = 1450;
+pid_t SANDBOX_GID = 1450;
 
 pid_t pid;
 long time_limit_to_watch;
 bool time_limit_exceeded_killed;
+
+static int open_stream(const char *path, int for_stdin, int for_stderr)
+{
+    if (!strlen(path))
+        return -1;
+
+    struct stat st;
+    int flags = 0;
+    mode_t mode = S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH;
+
+    if (stat(path, &st) == 0 && S_ISFIFO(st.st_mode))
+    {
+        /* FIFO: open with correct direction, retry to avoid ENXIO. */
+        flags = for_stdin ? O_RDONLY : O_WRONLY;
+        int fd = -1;
+        for (int i = 0; i < 200; i++)
+        {
+            fd = open(path, flags);
+            if (fd >= 0)
+                break;
+            if (errno != ENXIO && errno != EAGAIN)
+                break;
+            usleep(10000); // wait 10ms
+        }
+        if (fd < 0 && !for_stdin && errno == ENXIO)
+        {
+            /* still no reader, open RDWR as last resort */
+            fd = open(path, O_RDWR);
+        }
+        if (fd >= 0)
+            return fd;
+        return -1;
+    }
+    else
+    {
+        if (for_stdin)
+            flags = O_RDONLY;
+        else
+            flags = O_WRONLY | O_CREAT;
+    }
+
+    int fd = open(path, flags, mode);
+    if (fd < 0 && !for_stdin && errno == ENXIO)
+    {
+        /* FIFO writer without reader: retry as RDWR to avoid ENXIO. */
+        fd = open(path, O_RDWR, mode);
+    }
+    return fd;
+}
 
 void *watcher_thread(void *arg)
 {
@@ -32,6 +82,12 @@ void *watcher_thread(void *arg)
 
 int main(int argc, char **argv)
 {
+    char *uid_override = getenv("SANDBOX_UID");
+    char *gid_override = getenv("SANDBOX_GID");
+    if (uid_override)
+        SANDBOX_UID = atoi(uid_override);
+    if (gid_override)
+        SANDBOX_GID = atoi(gid_override);
     if (argc != 11 + 1)
     {
         fprintf(stderr, "Error: need 11 arguments\n");
@@ -61,6 +117,11 @@ int main(int argc, char **argv)
 
     char *program = 0;
     char **program_argv = 0;
+    int allow_write_file = 0;
+
+    char *env_allow = getenv("SANDBOX_ALLOW_WRITE");
+    if (env_allow && strlen(env_allow))
+        allow_write_file = atoi(env_allow) != 0;
 
     if (lang_id == 0)
     { // c11
@@ -93,18 +154,6 @@ int main(int argc, char **argv)
         program = python3_execution[0];
         program_argv = python3_execution;
     }
-
-#ifdef LOG
-    printf("Program: %s\n", program);
-    printf("Standard input file: %s\n", file_stdin);
-    printf("Standard output file: %s\n", file_stdout);
-    printf("Standard error file: %s\n", file_stderr);
-    printf("Time limit (seconds): %lu\n", time_limit);
-    printf("Memory limit (kilobytes): %lu\n", memory_limit);
-    printf("Output limit (bytes): %lu\n", output_limit);
-    printf("Process limit: %lu\n", process_limit);
-    printf("Result file: %s\n", file_result);
-#endif
 
     pid = fork();
     if (pid > 0)
@@ -174,13 +223,6 @@ int main(int argc, char **argv)
             }
         }
 
-#ifdef LOG
-        printf("memory_usage = %ld\n", usage.ru_maxrss);
-        if (time_limit_exceeded_killed)
-            printf("cpu_usage = %ld\n", time_limit_to_watch);
-        else
-            printf("cpu_usage = %ld\n", (usage.ru_utime.tv_sec * 1000000 + usage.ru_utime.tv_usec) / 1000);
-#endif
         if (time_limit_exceeded_killed)
             fprintf(fresult, "%ld\n", time_limit_to_watch);
         else
@@ -191,9 +233,6 @@ int main(int argc, char **argv)
     }
     else
     {
-#ifdef LOG
-        puts("Entered child process.");
-#endif
 
         // Child process
 
@@ -236,18 +275,11 @@ int main(int argc, char **argv)
             setrlimit(RLIMIT_NPROC, &lim);
         }
 
-#ifdef LOG
-        puts("Entering target program...");
-#endif
-
         if (strlen(file_stdin))
         {
-            int fd = open(file_stdin, O_RDONLY);
+            int fd = open_stream(file_stdin, 1, 0);
             if (fd < 0)
             {
-#ifdef LOG
-                puts("Cannot open file_stdin...");
-#endif
                 return -1;
             }
             dup2(fd, STDIN_FILENO);
@@ -256,12 +288,9 @@ int main(int argc, char **argv)
 
         if (strlen(file_stdout))
         {
-            int fd = open(file_stdout, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+            int fd = open_stream(file_stdout, 0, 0);
             if (fd < 0)
             {
-#ifdef LOG
-                puts("Cannot open file_stdout...");
-#endif
                 return -1;
             }
             dup2(fd, STDOUT_FILENO);
@@ -270,12 +299,9 @@ int main(int argc, char **argv)
 
         if (strlen(file_stderr))
         {
-            int fd = open(file_stderr, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+            int fd = open_stream(file_stderr, 0, 1);
             if (fd < 0)
             {
-#ifdef LOG
-                puts("Cannot open file_stderr...");
-#endif
                 return -1;
             }
             dup2(fd, STDERR_FILENO);
@@ -290,9 +316,9 @@ int main(int argc, char **argv)
         if (!compile)
         {
             if (lang_id == 0 || lang_id == 1)
-                c_cpp_rules(program, 0);
+                c_cpp_rules(program, allow_write_file);
             if (lang_id == 2)
-                general_rules(program, 0);
+                general_rules(program, allow_write_file);
         }
 
         execvp(program, program_argv);
