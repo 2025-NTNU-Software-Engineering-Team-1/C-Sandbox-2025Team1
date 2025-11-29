@@ -4,7 +4,7 @@
 
 #define LOAD_SECCOMP_FAILED 1
 
-int c_cpp_rules (char *target , bool allow_write_file)
+int c_cpp_rules (char *target , bool allow_write_file , bool allow_network_access)
 {
     scmp_filter_ctx ctx;
     ctx = seccomp_init (SCMP_ACT_KILL);
@@ -30,19 +30,29 @@ int c_cpp_rules (char *target , bool allow_write_file)
                                 SCMP_SYS (set_robust_list), SCMP_SYS (rseq),
                                 SCMP_SYS (prlimit64), SCMP_SYS(ioctl),
                                 SCMP_SYS (futex),
-                                SCMP_SYS (getrandom),
-                                SCMP_SYS (socket), SCMP_SYS (connect),
-                                SCMP_SYS (bind), SCMP_SYS (listen),
-                                SCMP_SYS (accept), SCMP_SYS (sendto),
-                                SCMP_SYS (recvfrom), SCMP_SYS (setsockopt),
-                                SCMP_SYS (getsockopt), SCMP_SYS (getpeername),
-                                SCMP_SYS (getsockname)};
+                                SCMP_SYS (getrandom)};
+
+    int network_syscalls [] = {SCMP_SYS (socket), SCMP_SYS (connect),
+                               SCMP_SYS (bind), SCMP_SYS (listen),
+                               SCMP_SYS (accept), SCMP_SYS (sendto),
+                               SCMP_SYS (recvfrom), SCMP_SYS (setsockopt),
+                               SCMP_SYS (getsockopt), SCMP_SYS (getpeername),
+                               SCMP_SYS (getsockname)};
 
     // add rules
     int syscalls_whitelist_length = sizeof (syscalls_whitelist) / sizeof (int);
     for (int i = 0; i < syscalls_whitelist_length; i++) {
         if (seccomp_rule_add (ctx , SCMP_ACT_ALLOW , syscalls_whitelist [i] , 0) != 0) {
             return LOAD_SECCOMP_FAILED;
+        }
+    }
+
+    if (allow_network_access) {
+        int network_syscalls_length = sizeof (network_syscalls) / sizeof (int);
+        for (int i = 0; i < network_syscalls_length; i++) {
+            if (seccomp_rule_add (ctx , SCMP_ACT_ALLOW , network_syscalls [i] , 0) != 0) {
+                return LOAD_SECCOMP_FAILED;
+            }
         }
     }
 

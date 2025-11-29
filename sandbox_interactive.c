@@ -88,10 +88,10 @@ int main(int argc, char **argv)
         SANDBOX_UID = atoi(uid_override);
     if (gid_override)
         SANDBOX_GID = atoi(gid_override);
-    if (argc != 11 + 1)
+    if (argc != 12 + 1)
     {
-        fprintf(stderr, "Error: need 11 arguments\n");
-        fprintf(stderr, "Usage: %s lang_id compile file_stdin file_stdout file_stderr time_limit memory_limit large_stack output_limit process_limit file_result\n", argv[0]);
+        fprintf(stderr, "Error: need 12 arguments\n");
+        fprintf(stderr, "Usage: %s lang_id compile file_stdin file_stdout file_stderr time_limit memory_limit large_stack output_limit process_limit allow_network_access file_result\n", argv[0]);
         return 1;
     }
 
@@ -104,14 +104,15 @@ int main(int argc, char **argv)
     char *file_stdin = argv[3],
          *file_stdout = argv[4],
          *file_stderr = argv[5],
-         *file_result = argv[11];
+         *file_result = argv[12];
     long lang_id = strtol(argv[1], NULL, 10),
          compile = strtol(argv[2], NULL, 10),
          time_limit = strtol(argv[6], NULL, 10),
          memory_limit = strtol(argv[7], NULL, 10),
          large_stack = strtol(argv[8], NULL, 10),
          output_limit = strtol(argv[9], NULL, 10),
-         process_limit = strtol(argv[10], NULL, 10);
+         process_limit = strtol(argv[10], NULL, 10),
+         allow_network_access = strtol(argv[11], NULL, 10);
 
     time_limit_to_watch = time_limit + 300;
 
@@ -316,9 +317,9 @@ int main(int argc, char **argv)
         if (!compile)
         {
             if (lang_id == 0 || lang_id == 1)
-                c_cpp_rules(program, allow_write_file);
+                c_cpp_rules(program, allow_write_file, allow_network_access);
             if (lang_id == 2)
-                general_rules(program, allow_write_file);
+                general_rules(program);
         }
 
         execvp(program, program_argv);
