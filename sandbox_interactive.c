@@ -319,7 +319,7 @@ int main(int argc, char **argv)
             if (lang_id == 0 || lang_id == 1)
                 c_cpp_rules(program, allow_write_file, allow_network_access);
             if (lang_id == 2)
-                general_rules(program);
+                general_rules(program, allow_write_file);
         }
 
         execvp(program, program_argv);
