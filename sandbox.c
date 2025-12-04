@@ -62,6 +62,11 @@ int main(int argc, char **argv)
 
     char *program = 0;
     char **program_argv = 0;
+    int allow_write_file = 0;
+
+    char *env_allow = getenv("SANDBOX_ALLOW_WRITE");
+    if (env_allow && strlen(env_allow))
+        allow_write_file = atoi(env_allow) != 0;
 
     if (lang_id == 0)
     { // c11
@@ -291,9 +296,9 @@ int main(int argc, char **argv)
         if (!compile)
         {
             if (lang_id == 0 || lang_id == 1)
-                c_cpp_rules(program, 0, allow_network_access);
+                c_cpp_rules(program, allow_write_file, allow_network_access);
             if (lang_id == 2)
-                general_rules(program, 0);
+                general_rules(program, allow_write_file);
         }
 
         execvp(program, program_argv);
