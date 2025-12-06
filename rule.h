@@ -50,7 +50,12 @@ int c_cpp_rules (char *target , bool allow_write_file , bool allow_network)
             SCMP_SYS (select),
             SCMP_SYS (pselect6),
             SCMP_SYS (poll),
-            SCMP_SYS (ppoll)
+            SCMP_SYS (ppoll),
+            SCMP_SYS (ioctl),
+            SCMP_SYS (sendmsg),
+            SCMP_SYS (recvmsg),
+            SCMP_SYS (socketpair),
+            SCMP_SYS (madvise)
         };
         int net_len = sizeof (network_syscalls) / sizeof (int);
         for (int i = 0; i < net_len; i++) {
