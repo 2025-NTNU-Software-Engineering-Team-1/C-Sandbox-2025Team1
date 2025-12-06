@@ -4,7 +4,7 @@
 
 #define LOAD_SECCOMP_FAILED 1
 
-int c_cpp_rules (char *target , bool allow_write_file)
+int c_cpp_rules (char *target , bool allow_write_file , bool allow_network)
 {
     scmp_filter_ctx ctx;
     ctx = seccomp_init (SCMP_ACT_KILL);
@@ -30,13 +30,7 @@ int c_cpp_rules (char *target , bool allow_write_file)
                                 SCMP_SYS (set_robust_list), SCMP_SYS (rseq),
                                 SCMP_SYS (prlimit64),
                                 SCMP_SYS (futex),
-                                SCMP_SYS (getrandom),
-                                SCMP_SYS (socket), SCMP_SYS (connect),
-                                SCMP_SYS (bind), SCMP_SYS (listen),
-                                SCMP_SYS (accept), SCMP_SYS (sendto),
-                                SCMP_SYS (recvfrom), SCMP_SYS (setsockopt),
-                                SCMP_SYS (getsockopt), SCMP_SYS (getpeername),
-                                SCMP_SYS (getsockname)};
+                                SCMP_SYS (getrandom),};
 
     // add rules
     int syscalls_whitelist_length = sizeof (syscalls_whitelist) / sizeof (int);
@@ -45,7 +39,22 @@ int c_cpp_rules (char *target , bool allow_write_file)
             return LOAD_SECCOMP_FAILED;
         }
     }
-
+    if (allow_network) {
+        int network_syscalls [] = {
+            SCMP_SYS (socket), SCMP_SYS (connect),
+            SCMP_SYS (bind), SCMP_SYS (listen),
+            SCMP_SYS (accept), SCMP_SYS (sendto),
+            SCMP_SYS (recvfrom), SCMP_SYS (setsockopt),
+            SCMP_SYS (getsockopt), SCMP_SYS (getpeername),
+            SCMP_SYS (getsockname)
+        };
+        int net_len = sizeof (network_syscalls) / sizeof (int);
+        for (int i = 0; i < net_len; i++) {
+            if (seccomp_rule_add (ctx , SCMP_ACT_ALLOW , network_syscalls [i] , 0) != 0) {
+                return LOAD_SECCOMP_FAILED;
+            }
+        }
+    }
     // file write permission
     if (!allow_write_file) {
         // do not allow "w" and "rw"
@@ -85,7 +94,7 @@ int python3_rules (char *target)
     return 0;
 }
 
-int general_rules (char *target)
+int general_rules (char *target , bool allow_network)
 {
     scmp_filter_ctx ctx;
     ctx = seccomp_init (SCMP_ACT_ALLOW);
@@ -122,6 +131,10 @@ int general_rules (char *target)
     }
     if (seccomp_rule_add (ctx , SCMP_ACT_KILL , SCMP_SYS (openat) , 1 , SCMP_CMP (2 , SCMP_CMP_MASKED_EQ , O_RDWR , O_RDWR)) != 0) {
         return LOAD_SECCOMP_FAILED;
+    }
+
+    if (!allow_network) {
+
     }
 
     if (seccomp_load (ctx) != 0) {
